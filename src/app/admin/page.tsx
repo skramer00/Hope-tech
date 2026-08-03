@@ -1,100 +1,187 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import type { Session } from "@supabase/supabase-js";
+import { supabase } from "@/lib/supabase";
 import "./admin.css";
-
-type ContentType = "Role" | "Guide" | "Troubleshooting" | "Assistant Answer";
-type Status = "Published" | "Draft";
 
 type ContentItem = {
   id: string;
   title: string;
-  type: ContentType;
-  role: string;
-  status: Status;
-  safety: "Volunteer Safe" | "Technical Lead";
-  updated: string;
+  slug: string;
+  content_type: "role" | "guide" | "troubleshooting" | "assistant" | "media" | "setting";
+  role_key: string | null;
+  summary: string | null;
+  body: { blocks?: Array<{ type: string; text: string }> };
+  safety_level: "volunteer_safe" | "technical_lead" | "admin_only";
+  status: "draft" | "published" | "archived";
+  updated_at: string;
 };
 
-const seedItems: ContentItem[] = [
-  { id: "switcher-role", title: "Switcher Director", type: "Role", role: "Switcher", status: "Published", safety: "Volunteer Safe", updated: "Today" },
-  { id: "camera-role", title: "Camera Operator", type: "Role", role: "Camera", status: "Published", safety: "Volunteer Safe", updated: "Today" },
-  { id: "propresenter-role", title: "ProPresenter 7", type: "Role", role: "ProPresenter", status: "Published", safety: "Volunteer Safe", updated: "Today" },
-  { id: "safe-shot", title: "Camera 2 Safe Shot", type: "Guide", role: "Switcher", status: "Published", safety: "Volunteer Safe", updated: "Today" },
-  { id: "camera-black", title: "Camera Is Black", type: "Troubleshooting", role: "Switcher", status: "Published", safety: "Volunteer Safe", updated: "Today" },
-  { id: "pp-frozen", title: "ProPresenter Is Frozen", type: "Assistant Answer", role: "ProPresenter", status: "Published", safety: "Technical Lead", updated: "Today" },
-];
+type Profile = { id: string; email: string | null; display_name: string | null; role: "admin" | "editor" | "viewer" };
 
 const sections = ["Overview", "Content", "Roles & Devices", "Assistant Knowledge", "Media", "Settings"];
+const emptyItem: Omit<ContentItem, "id" | "updated_at"> = {
+  title: "Untitled guide",
+  slug: "",
+  content_type: "guide",
+  role_key: "switcher",
+  summary: "",
+  body: { blocks: [] },
+  safety_level: "volunteer_safe",
+  status: "draft",
+};
 
 export default function AdminPage() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [items, setItems] = useState<ContentItem[]>([]);
   const [active, setActive] = useState("Overview");
-  const [items, setItems] = useState(seedItems);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<ContentItem | null>(null);
+  const [message, setMessage] = useState("");
 
-  const filtered = useMemo(() => items.filter((item) => `${item.title} ${item.type} ${item.role}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    async function load() {
+      if (!session?.user) {
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      const { data: profileData } = await supabase.from("profiles").select("id,email,display_name,role").eq("id", session.user.id).single();
+      setProfile(profileData as Profile | null);
+      if (profileData && ["admin", "editor"].includes(profileData.role)) await loadItems();
+      setLoading(false);
+    }
+    load();
+  }, [session]);
+
+  async function loadItems() {
+    const { data, error } = await supabase.from("content_items").select("*").order("sort_order").order("updated_at", { ascending: false });
+    if (error) setMessage(error.message);
+    else setItems((data ?? []) as ContentItem[]);
+  }
+
+  const filtered = useMemo(() => {
+    const sectionType = active === "Roles & Devices" ? "role" : active === "Assistant Knowledge" ? "assistant" : active === "Media" ? "media" : null;
+    return items.filter((item) => (!sectionType || item.content_type === sectionType) && `${item.title} ${item.content_type} ${item.role_key ?? ""}`.toLowerCase().includes(query.toLowerCase()));
+  }, [items, query, active]);
+
   const counts = {
-    published: items.filter((item) => item.status === "Published").length,
-    drafts: items.filter((item) => item.status === "Draft").length,
-    safe: items.filter((item) => item.safety === "Volunteer Safe").length,
-    lead: items.filter((item) => item.safety === "Technical Lead").length,
+    published: items.filter((item) => item.status === "published").length,
+    drafts: items.filter((item) => item.status === "draft").length,
+    safe: items.filter((item) => item.safety_level === "volunteer_safe").length,
+    lead: items.filter((item) => item.safety_level !== "volunteer_safe").length,
   };
 
-  function createDraft() {
-    const draft: ContentItem = {
-      id: `draft-${Date.now()}`,
-      title: "Untitled guide",
-      type: "Guide",
-      role: "Switcher",
-      status: "Draft",
-      safety: "Volunteer Safe",
-      updated: "Just now",
-    };
-    setItems((current) => [draft, ...current]);
-    setSelected(draft);
+  async function createDraft() {
+    const slug = `untitled-${Date.now()}`;
+    const { data, error } = await supabase.from("content_items").insert({ ...emptyItem, slug, created_by: session?.user.id, updated_by: session?.user.id }).select("*").single();
+    if (error) return setMessage(error.message);
+    const created = data as ContentItem;
+    setItems((current) => [created, ...current]);
+    setSelected(created);
     setActive("Content");
   }
 
-  function saveSelected() {
+  async function saveSelected() {
     if (!selected) return;
-    setItems((current) => current.map((item) => item.id === selected.id ? { ...selected, updated: "Just now" } : item));
+    const cleanSlug = selected.slug || selected.title.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const { data, error } = await supabase.from("content_items").update({
+      title: selected.title,
+      slug: cleanSlug,
+      content_type: selected.content_type,
+      role_key: selected.role_key || null,
+      summary: selected.summary,
+      body: selected.body,
+      safety_level: selected.safety_level,
+      status: selected.status,
+      updated_by: session?.user.id,
+    }).eq("id", selected.id).select("*").single();
+    if (error) return setMessage(error.message);
+    setItems((current) => current.map((item) => item.id === selected.id ? data as ContentItem : item));
+    setSelected(null);
+    setMessage("Content saved.");
   }
+
+  if (loading) return <main className="wrap section"><p>Loading Hope Tech administration…</p></main>;
+  if (!session) return <AdminLogin />;
+  if (!profile || !["admin", "editor"].includes(profile.role)) return <main className="wrap section"><p className="eyebrow">Access restricted</p><h1>This account does not have admin access.</h1><p>Sign in with the approved Hope Tech administrator account.</p><button className="button secondary" onClick={() => supabase.auth.signOut()}>Sign out</button></main>;
 
   return <main className="admin-page">
     <aside className="admin-sidebar">
       <Link href="/" className="admin-brand"><span>HT</span><div><strong>Hope Tech</strong><small>Administration</small></div></Link>
       <nav>{sections.map((section) => <button key={section} className={active === section ? "active" : ""} onClick={() => setActive(section)}>{section}</button>)}</nav>
-      <div className="admin-sidebar-note"><strong>Setup status</strong><span className="setup-dot"/> Supabase connection pending</div>
+      <div className="admin-sidebar-note"><strong>Connected</strong><span className="setup-dot"/> Supabase persistence active</div>
+      <button className="return-link" onClick={() => supabase.auth.signOut()}>Sign out</button>
       <Link href="/" className="return-link">Return to volunteer site</Link>
     </aside>
 
     <section className="admin-main">
-      <header className="admin-header"><div><p className="eyebrow">Admin portal</p><h1>{active}</h1></div><button className="admin-primary" onClick={createDraft}>+ New content</button></header>
+      <header className="admin-header"><div><p className="eyebrow">Admin portal · {profile.display_name || profile.email}</p><h1>{active}</h1></div><button className="admin-primary" onClick={createDraft}>+ New content</button></header>
+      {message && <div className="admin-notice"><div><strong>{message}</strong></div><button onClick={() => setMessage("")}>×</button></div>}
 
-      {active === "Overview" && <>
-        <div className="admin-notice"><div><strong>Admin interface preview is active.</strong><p>The editor structure is ready. Database persistence and secure sign-in will turn on after a dedicated Hope Tech Supabase project is connected.</p></div><span>PREVIEW</span></div>
+      {active === "Overview" ? <>
+        <div className="admin-notice"><div><strong>Live content management is active.</strong><p>Changes are now stored in the dedicated Hope Tech database and protected by administrator access.</p></div><span>LIVE</span></div>
         <div className="metric-grid">
           <article><small>Published</small><strong>{counts.published}</strong><p>Live volunteer resources</p></article>
           <article><small>Drafts</small><strong>{counts.drafts}</strong><p>Waiting for review</p></article>
           <article><small>Volunteer safe</small><strong>{counts.safe}</strong><p>Immediate actions</p></article>
           <article><small>Lead only</small><strong>{counts.lead}</strong><p>Escalated procedures</p></article>
         </div>
-        <section className="admin-panel"><div className="panel-title"><div><p className="eyebrow">Recent content</p><h2>Keep guidance current.</h2></div><button onClick={() => setActive("Content")}>View all</button></div><ContentTable items={items.slice(0, 5)} onSelect={setSelected}/></section>
-        <div className="admin-two-column"><section className="admin-panel"><p className="eyebrow">Quick actions</p><div className="quick-admin-actions"><button onClick={createDraft}>Create a guide</button><button onClick={() => setActive("Assistant Knowledge")}>Add assistant answer</button><button onClick={() => setActive("Roles & Devices")}>Manage a role</button><button onClick={() => setActive("Media")}>Upload a visual</button></div></section><section className="admin-panel"><p className="eyebrow">Content health</p><h2>Next review priorities</h2><ul className="review-list"><li><span>Switcher startup checklist</span><strong>Review soon</strong></li><li><span>Camera framing examples</span><strong>Needs photos</strong></li><li><span>ProPresenter video procedure</span><strong>Confirm audio</strong></li></ul></section></div>
-      </>}
-
-      {active !== "Overview" && <section className="admin-panel content-manager">
+        <section className="admin-panel"><div className="panel-title"><div><p className="eyebrow">Recent content</p><h2>Keep guidance current.</h2></div><button onClick={() => setActive("Content")}>View all</button></div><ContentTable items={items.slice(0, 6)} onSelect={setSelected}/></section>
+      </> : <section className="admin-panel content-manager">
         <div className="panel-title"><div><p className="eyebrow">Content library</p><h2>{active}</h2></div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search content"/></div>
         <ContentTable items={filtered} onSelect={setSelected}/>
       </section>}
     </section>
 
-    {selected && <div className="editor-backdrop" onClick={() => setSelected(null)}><aside className="editor-drawer" onClick={(event) => event.stopPropagation()}><div className="editor-header"><div><p className="eyebrow">Content editor</p><h2>{selected.title}</h2></div><button onClick={() => setSelected(null)}>×</button></div><label>Title<input value={selected.title} onChange={(event) => setSelected({ ...selected, title: event.target.value })}/></label><div className="editor-row"><label>Type<select value={selected.type} onChange={(event) => setSelected({ ...selected, type: event.target.value as ContentType })}><option>Role</option><option>Guide</option><option>Troubleshooting</option><option>Assistant Answer</option></select></label><label>Role<select value={selected.role} onChange={(event) => setSelected({ ...selected, role: event.target.value })}><option>Switcher</option><option>Camera</option><option>ProPresenter</option><option>Audio</option><option>Lighting</option></select></label></div><div className="editor-row"><label>Status<select value={selected.status} onChange={(event) => setSelected({ ...selected, status: event.target.value as Status })}><option>Published</option><option>Draft</option></select></label><label>Safety level<select value={selected.safety} onChange={(event) => setSelected({ ...selected, safety: event.target.value as ContentItem["safety"] })}><option>Volunteer Safe</option><option>Technical Lead</option></select></label></div><label>Summary<textarea rows={4} placeholder="What should the volunteer know or do?"/></label><div className="block-builder"><div><strong>Guide blocks</strong><small>Add structured content</small></div><div className="block-buttons"><button>+ Step</button><button>+ Warning</button><button>+ Tip</button><button>+ Image</button><button>+ Checklist</button><button>+ Decision</button></div></div><div className="editor-actions"><button className="secondary-admin" onClick={() => setSelected(null)}>Cancel</button><button className="admin-primary" onClick={() => { saveSelected(); setSelected(null); }}>Save draft</button></div></aside></div>}
+    {selected && <Editor item={selected} setItem={setSelected} onClose={() => setSelected(null)} onSave={saveSelected}/>} 
   </main>;
 }
 
+function AdminLogin() {
+  const [email, setEmail] = useState("scott.skweb@gmail.com");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [message, setMessage] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setMessage("Working…");
+    const result = mode === "signin"
+      ? await supabase.auth.signInWithPassword({ email, password })
+      : await supabase.auth.signUp({ email, password, options: { data: { display_name: "Scott" }, emailRedirectTo: `${window.location.origin}/admin` } });
+    setMessage(result.error ? result.error.message : mode === "signup" ? "Account created. Check your email if confirmation is required, then sign in." : "Signed in.");
+  }
+
+  return <main className="wrap section"><div className="admin-login-card"><p className="eyebrow">Hope Tech administration</p><h1>{mode === "signin" ? "Sign in" : "Create administrator account"}</h1><p>Use the approved administrator email address. Public volunteers do not need an account.</p><form onSubmit={submit}><label>Email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)}/></label><label>Password<input type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)}/></label><button className="admin-primary" type="submit">{mode === "signin" ? "Sign in" : "Create account"}</button></form>{message && <p>{message}</p>}<button className="secondary-admin" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setMessage(""); }}>{mode === "signin" ? "First time? Create the administrator account" : "Already created it? Sign in"}</button></div></main>;
+}
+
+function Editor({ item, setItem, onClose, onSave }: { item: ContentItem; setItem: (item: ContentItem) => void; onClose: () => void; onSave: () => void }) {
+  return <div className="editor-backdrop" onClick={onClose}><aside className="editor-drawer" onClick={(event) => event.stopPropagation()}><div className="editor-header"><div><p className="eyebrow">Content editor</p><h2>{item.title}</h2></div><button onClick={onClose}>×</button></div>
+    <label>Title<input value={item.title} onChange={(event) => setItem({ ...item, title: event.target.value })}/></label>
+    <label>URL slug<input value={item.slug} onChange={(event) => setItem({ ...item, slug: event.target.value })}/></label>
+    <div className="editor-row"><label>Type<select value={item.content_type} onChange={(event) => setItem({ ...item, content_type: event.target.value as ContentItem["content_type"] })}><option value="role">Role</option><option value="guide">Guide</option><option value="troubleshooting">Troubleshooting</option><option value="assistant">Assistant Answer</option><option value="media">Media</option><option value="setting">Setting</option></select></label><label>Role<select value={item.role_key ?? ""} onChange={(event) => setItem({ ...item, role_key: event.target.value })}><option value="switcher">Switcher</option><option value="camera">Camera</option><option value="propresenter">ProPresenter</option><option value="audio">Audio</option><option value="lighting">Lighting</option><option value="">General</option></select></label></div>
+    <div className="editor-row"><label>Status<select value={item.status} onChange={(event) => setItem({ ...item, status: event.target.value as ContentItem["status"] })}><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label><label>Safety level<select value={item.safety_level} onChange={(event) => setItem({ ...item, safety_level: event.target.value as ContentItem["safety_level"] })}><option value="volunteer_safe">Volunteer Safe</option><option value="technical_lead">Technical Lead</option><option value="admin_only">Administrator Only</option></select></label></div>
+    <label>Summary<textarea rows={5} value={item.summary ?? ""} onChange={(event) => setItem({ ...item, summary: event.target.value })}/></label>
+    <div className="editor-actions"><button className="secondary-admin" onClick={onClose}>Cancel</button><button className="admin-primary" onClick={onSave}>Save</button></div>
+  </aside></div>;
+}
+
 function ContentTable({ items, onSelect }: { items: ContentItem[]; onSelect: (item: ContentItem) => void }) {
-  return <div className="content-table"><div className="content-row content-head"><span>Title</span><span>Type</span><span>Role</span><span>Safety</span><span>Status</span></div>{items.map((item) => <button className="content-row" key={item.id} onClick={() => onSelect(item)}><span><strong>{item.title}</strong><small>Updated {item.updated}</small></span><span>{item.type}</span><span>{item.role}</span><span><i className={item.safety === "Volunteer Safe" ? "safe-indicator" : "lead-indicator"}/>{item.safety}</span><span className={item.status === "Published" ? "published-pill" : "draft-pill"}>{item.status}</span></button>)}</div>;
+  return <div className="content-table"><div className="content-row content-head"><span>Title</span><span>Type</span><span>Role</span><span>Safety</span><span>Status</span></div>{items.map((item) => <button className="content-row" key={item.id} onClick={() => onSelect(item)}><span><strong>{item.title}</strong><small>Updated {new Date(item.updated_at).toLocaleDateString()}</small></span><span>{label(item.content_type)}</span><span>{label(item.role_key || "general")}</span><span><i className={item.safety_level === "volunteer_safe" ? "safe-indicator" : "lead-indicator"}/>{label(item.safety_level)}</span><span className={item.status === "published" ? "published-pill" : "draft-pill"}>{label(item.status)}</span></button>)}</div>;
+}
+
+function label(value: string) {
+  return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
