@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
+import "./support.css";
 
 export const metadata: Metadata = {
   title: "Hope Technical Ministries",
