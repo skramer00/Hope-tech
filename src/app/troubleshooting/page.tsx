@@ -1,0 +1,9 @@
+const issues = [
+ ["A camera is black", "Keep the current working source live. Do not take the black camera. Preview Camera 2 and use it as the fallback."],
+ ["The wrong camera is live", "Preview the correct source, verify it, then CUT. Do not panic-switch repeatedly."],
+ ["A camera operator is not ready", "Stay on the current shot or use Camera 2. Cue the operator and wait for a settled frame."],
+ ["ProPresenter is not showing", "Remain on camera. Verify the ProPresenter source in Preview. Do not change switcher configuration."],
+ ["The physical controller stops responding", "Do not restart the ATEM during the service. Stay on the current source and contact the technical lead."],
+ ["Everything goes black", "Use an approved visible fallback only. Escalate immediately and do not power-cycle rack equipment."]
+];
+export default function TroubleshootingPage(){return <div className="wrap section"><p className="eyebrow">Volunteer-safe recovery</p><h1>What went wrong?</h1><p className="lead">Keep the service moving. Avoid configuration changes and restarts unless a technical lead directs you.</p><div className="issue-grid">{issues.map(([title,body],i)=><article className="issue" key={title}><span className={i<3?"safe-label":"escalate-label"}>{i<3?"Volunteer safe":"Escalate quickly"}</span><h2>{title}</h2><p>{body}</p></article>)}</div><div className="danger"><strong>Stop immediately:</strong> Smoke, sparks, burning smell, repeated power cycling, electrical concerns, or unsafe heat. Do not touch rack power or cabling.</div><div className="ai-placeholder"><p className="eyebrow">Planned feature</p><h2>Hope Tech Assistant</h2><p>The AI chat will answer only from approved Hope procedures, equipment records, and selected manuals. It will distinguish volunteer-safe actions from technical-lead actions.</p><button disabled>Ask AI support — coming soon</button></div></div>}
