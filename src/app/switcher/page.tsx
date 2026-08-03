@@ -28,6 +28,7 @@ export default function SwitcherPage() {
  return <div className="wrap section">
   <div className="page-heading"><div><p className="eyebrow">Switcher Director</p><h1>Run the service with confidence.</h1><p className="lead">Cue the camera, wait for a settled shot, verify it in Preview, then transition.</p></div><div className="safe-shot"><small>When unsure, use</small><strong>Camera 2</strong><span>Safe wide shot</span></div></div>
   <div className="rule-banner"><strong>Music fades.</strong><span>Speaking and everything else cuts.</span></div>
+  <div className="button-row"><Link className="button primary" href="/switcher/live">Enter Live Service Mode</Link><Link className="button secondary" href="/switcher/panel">Open Panel Guide</Link></div>
 
   <PreServiceChecklist />
 
