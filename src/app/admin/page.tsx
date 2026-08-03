@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
@@ -19,7 +19,12 @@ type ContentItem = {
   updated_at: string;
 };
 
-type Profile = { id: string; email: string | null; display_name: string | null; role: "admin" | "editor" | "viewer" };
+type Profile = {
+  id: string;
+  email: string | null;
+  display_name: string | null;
+  role: "admin" | "editor" | "viewer";
+};
 
 const sections = ["Overview", "Content", "Roles & Devices", "Assistant Knowledge", "Media", "Settings"];
 const emptyItem: Omit<ContentItem, "id" | "updated_at"> = {
@@ -37,39 +42,66 @@ export default function AdminPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessError, setAccessError] = useState("");
   const [items, setItems] = useState<ContentItem[]>([]);
   const [active, setActive] = useState("Overview");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<ContentItem | null>(null);
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => setSession(nextSession));
-    return () => listener.subscription.unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    async function load() {
-      if (!session?.user) {
-        setProfile(null);
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      const { data: profileData } = await supabase.from("profiles").select("id,email,display_name,role").eq("id", session.user.id).single();
-      setProfile(profileData as Profile | null);
-      if (profileData && ["admin", "editor"].includes(profileData.role)) await loadItems();
-      setLoading(false);
-    }
-    load();
-  }, [session]);
-
-  async function loadItems() {
-    const { data, error } = await supabase.from("content_items").select("*").order("sort_order").order("updated_at", { ascending: false });
+  const loadItems = useCallback(async () => {
+    const { data, error } = await supabase
+      .from("content_items")
+      .select("*")
+      .order("sort_order")
+      .order("updated_at", { ascending: false });
     if (error) setMessage(error.message);
     else setItems((data ?? []) as ContentItem[]);
-  }
+  }, []);
+
+  const loadAccess = useCallback(async (nextSession: Session | null) => {
+    setLoading(true);
+    setAccessError("");
+    setSession(nextSession);
+
+    if (!nextSession?.user) {
+      setProfile(null);
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase.rpc("get_my_admin_profile");
+    if (error) {
+      setProfile(null);
+      setAccessError(error.message);
+      setLoading(false);
+      return;
+    }
+
+    const nextProfile = Array.isArray(data) ? data[0] : null;
+    setProfile((nextProfile ?? null) as Profile | null);
+
+    if (nextProfile && ["admin", "editor"].includes(nextProfile.role)) {
+      await loadItems();
+    }
+    setLoading(false);
+  }, [loadItems]);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) void loadAccess(data.session);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (mounted) void loadAccess(nextSession);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, [loadAccess]);
 
   const filtered = useMemo(() => {
     const sectionType = active === "Roles & Devices" ? "role" : active === "Assistant Knowledge" ? "assistant" : active === "Media" ? "media" : null;
@@ -113,15 +145,27 @@ export default function AdminPage() {
     setMessage("Content saved.");
   }
 
-  if (loading) return <main className="wrap section"><p>Loading Hope Tech administration…</p></main>;
+  if (loading) return <main className="wrap section"><p>Checking Hope Tech administrator access…</p></main>;
   if (!session) return <AdminLogin />;
-  if (!profile || !["admin", "editor"].includes(profile.role)) return <main className="wrap section"><p className="eyebrow">Access restricted</p><h1>This account does not have admin access.</h1><p>Sign in with the approved Hope Tech administrator account.</p><button className="button secondary" onClick={() => supabase.auth.signOut()}>Sign out</button></main>;
+
+  if (!profile || !["admin", "editor"].includes(profile.role)) {
+    return <main className="wrap section">
+      <p className="eyebrow">Access restricted</p>
+      <h1>This account does not have admin access.</h1>
+      <p>Signed in as <strong>{session.user.email}</strong>.</p>
+      {accessError && <p>Role lookup error: {accessError}</p>}
+      <div className="button-row">
+        <button className="button primary" onClick={() => void loadAccess(session)}>Check access again</button>
+        <button className="button secondary" onClick={() => supabase.auth.signOut()}>Sign out</button>
+      </div>
+    </main>;
+  }
 
   return <main className="admin-page">
     <aside className="admin-sidebar">
       <Link href="/" className="admin-brand"><span>HT</span><div><strong>Hope Tech</strong><small>Administration</small></div></Link>
       <nav>{sections.map((section) => <button key={section} className={active === section ? "active" : ""} onClick={() => setActive(section)}>{section}</button>)}</nav>
-      <div className="admin-sidebar-note"><strong>Connected</strong><span className="setup-dot"/> Supabase persistence active</div>
+      <div className="admin-sidebar-note"><strong>Connected as {profile.role}</strong><span className="setup-dot"/> Supabase persistence active</div>
       <button className="return-link" onClick={() => supabase.auth.signOut()}>Sign out</button>
       <Link href="/" className="return-link">Return to volunteer site</Link>
     </aside>
@@ -131,7 +175,7 @@ export default function AdminPage() {
       {message && <div className="admin-notice"><div><strong>{message}</strong></div><button onClick={() => setMessage("")}>×</button></div>}
 
       {active === "Overview" ? <>
-        <div className="admin-notice"><div><strong>Live content management is active.</strong><p>Changes are now stored in the dedicated Hope Tech database and protected by administrator access.</p></div><span>LIVE</span></div>
+        <div className="admin-notice"><div><strong>Live content management is active.</strong><p>Changes are stored in the dedicated Hope Tech database and protected by administrator access.</p></div><span>LIVE</span></div>
         <div className="metric-grid">
           <article><small>Published</small><strong>{counts.published}</strong><p>Live volunteer resources</p></article>
           <article><small>Drafts</small><strong>{counts.drafts}</strong><p>Waiting for review</p></article>
@@ -152,19 +196,16 @@ export default function AdminPage() {
 function AdminLogin() {
   const [email, setEmail] = useState("scott.skweb@gmail.com");
   const [password, setPassword] = useState("");
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [message, setMessage] = useState("");
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    setMessage("Working…");
-    const result = mode === "signin"
-      ? await supabase.auth.signInWithPassword({ email, password })
-      : await supabase.auth.signUp({ email, password, options: { data: { display_name: "Scott" }, emailRedirectTo: `${window.location.origin}/admin` } });
-    setMessage(result.error ? result.error.message : mode === "signup" ? "Account created. Check your email if confirmation is required, then sign in." : "Signed in.");
+    setMessage("Signing in…");
+    const result = await supabase.auth.signInWithPassword({ email, password });
+    setMessage(result.error ? result.error.message : "Signed in. Checking administrator access…");
   }
 
-  return <main className="wrap section"><div className="admin-login-card"><p className="eyebrow">Hope Tech administration</p><h1>{mode === "signin" ? "Sign in" : "Create administrator account"}</h1><p>Use the approved administrator email address. Public volunteers do not need an account.</p><form onSubmit={submit}><label>Email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)}/></label><label>Password<input type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)}/></label><button className="admin-primary" type="submit">{mode === "signin" ? "Sign in" : "Create account"}</button></form>{message && <p>{message}</p>}<button className="secondary-admin" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setMessage(""); }}>{mode === "signin" ? "First time? Create the administrator account" : "Already created it? Sign in"}</button></div></main>;
+  return <main className="wrap section"><div className="admin-login-card"><p className="eyebrow">Hope Tech administration</p><h1>Sign in</h1><p>Use the approved administrator account.</p><form onSubmit={submit}><label>Email<input type="email" required value={email} onChange={(event) => setEmail(event.target.value)}/></label><label>Password<input type="password" minLength={8} required value={password} onChange={(event) => setPassword(event.target.value)}/></label><button className="admin-primary" type="submit">Sign in</button></form>{message && <p>{message}</p>}</div></main>;
 }
 
 function Editor({ item, setItem, onClose, onSave }: { item: ContentItem; setItem: (item: ContentItem) => void; onClose: () => void; onSave: () => void }) {
