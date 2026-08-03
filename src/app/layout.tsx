@@ -16,7 +16,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <span className="brand-mark">HT</span>
             <span><strong>Hope Technical Ministries</strong><small>Training & Support</small></span>
           </Link>
-          <nav><Link href="/">Roles</Link><Link href="/switcher">Switcher</Link><Link href="/troubleshooting">Help</Link></nav>
+          <nav><Link href="/">Tasks & Roles</Link><Link href="/equipment">Equipment</Link><Link href="/ask">Ask Hope Tech</Link><Link href="/troubleshooting">Help</Link></nav>
         </header>
         <main>{children}</main>
         <footer>Hope Technical Ministries · Volunteer-safe guidance for live services</footer>
