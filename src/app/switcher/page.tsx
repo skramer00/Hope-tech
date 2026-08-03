@@ -1,5 +1,6 @@
 import Link from "next/link";
 import PreServiceChecklist from "@/components/PreServiceChecklist";
+import "./switcher.css";
 
 const cameras = [
   ["1", "Primary close", "Medium or close shot of the speaker or main singer. Always staffed.", "Speaker · lead singer"],
