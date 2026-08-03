@@ -28,7 +28,7 @@ export default function SwitcherPage() {
  return <div className="wrap section">
   <div className="page-heading"><div><p className="eyebrow">Switcher Director</p><h1>Run the service with confidence.</h1><p className="lead">Cue the camera, wait for a settled shot, verify it in Preview, then transition.</p></div><div className="safe-shot"><small>When unsure, use</small><strong>Camera 2</strong><span>Safe wide shot</span></div></div>
   <div className="rule-banner"><strong>Music fades.</strong><span>Speaking and everything else cuts.</span></div>
-  <div className="button-row"><Link className="button primary" href="/switcher/live">Enter Live Service Mode</Link><Link className="button secondary" href="/switcher/panel">Open Panel Guide</Link></div>
+  <div className="button-row"><Link className="button primary" href="/switcher/live">Enter Live Service Mode</Link><Link className="button secondary" href="/switcher/panel">Open Panel Guide</Link><Link className="button secondary" href="/guides/safe-shot">Camera 2 Recovery Guide</Link></div>
 
   <PreServiceChecklist />
 
@@ -44,6 +44,6 @@ export default function SwitcherPage() {
 
   <section className="subsection"><p className="eyebrow">Sunday playbook</p><h2>Follow the order of service.</h2><div className="timeline">{flow.map(([name,transition,guide],i)=><details key={name} open={i===0}><summary><span>{i+1}</span><div><strong>{name}</strong><small>{transition}</small></div></summary><p>{guide}</p></details>)}</div></section>
 
-  <section className="fallback-card"><div><p className="eyebrow">Fast recovery</p><h2>When you lose the next shot</h2><p>Stay on the current usable source, or take Camera 2. Regroup, cue the next operator, and continue. Do not panic-switch.</p></div><Link className="button primary" href="/troubleshooting">Open troubleshooting</Link></section>
+  <section className="fallback-card"><div><p className="eyebrow">Fast recovery</p><h2>When you lose the next shot</h2><p>Stay on the current usable source, or take Camera 2. Regroup, cue the next operator, and continue. Do not panic-switch.</p></div><Link className="button primary" href="/guides/safe-shot">Open recovery guide</Link></section>
  </div>;
 }
