@@ -2,46 +2,40 @@ import Link from "next/link";
 import "./propresenter.css";
 
 const workflow = [
-  ["Preservice loop", "Run the approved loop and confirm the output is visible on the switcher."],
-  ["Welcome", "Stay on the loop until cued, then clear or advance to the requested content."],
-  ["Opening worship", "Follow the worship leader, not just the planned order. Hold the current lyric until the next phrase begins."],
-  ["Meet & greet", "Clear lyrics unless directed otherwise. Prepare announcements or the next service item."],
-  ["Announcements", "Select each announcement slide when cued. Do not rush ahead."],
-  ["Sermon", "Follow scripture, quotes, and sermon slides. If the speaker skips ahead, jump directly to the correct slide."],
-  ["Communion", "Use only the approved lyrics, scripture, or holding background for this segment."],
-  ["Closing worship", "Return to lyric-following mode and stay with the worship leader."],
-  ["Ending loop", "Start the ending loop, confirm it is visible, and leave the presentation ready for the next service."]
+  ["Preservice", "Run the approved loop and confirm the switcher can see it."],
+  ["Welcome", "Stay on the loop until cued, then clear or select the requested content."],
+  ["Worship", "Follow the worship leader. Hold each lyric until the next phrase begins."],
+  ["Meet & greet", "Clear lyrics and prepare announcements or the next service item."],
+  ["Announcements", "Select each slide when cued. Do not rush ahead."],
+  ["Sermon", "Follow the speaker. Jump directly to the current scripture, quote, or slide when the order changes."],
+  ["Communion", "Use only the approved scripture, lyrics, or holding background."],
+  ["Closing", "Return to lyric-following mode, then start the ending loop when cued."]
 ];
 
-const actions = [
-  ["Advance", "Use the next-slide control once when the next lyric or slide is needed."],
-  ["Go back", "Use the previous-slide control once. Avoid repeated rapid clicks."],
-  ["Jump to a slide", "Click the exact slide needed instead of clicking through many slides."],
-  ["Clear the screen", "Use the approved Clear action when content should disappear while keeping ProPresenter ready."],
-  ["Resume content", "Select the correct slide again after clearing."],
-  ["Start a video", "Select the video cue once and verify playback begins."],
-  ["Stop a video", "Use the approved stop or clear control, then prepare the next slide or loop."]
-];
-
-const issues = [
-  ["Wrong slide is showing", "Click the correct slide directly. Do not rapidly click Next trying to catch up."],
-  ["Lyrics are behind", "Stay calm and jump to the current lyric. Then resume normal pacing."],
-  ["The pastor skipped slides", "Select the slide matching what is being discussed now. Ignore skipped slides."],
-  ["Output is black", "Keep working on the operator screen, confirm the correct presentation is open, and alert the director or technical lead."],
-  ["Video will not play", "Do not repeatedly click it. Return to a safe slide or clear screen and alert the technical lead."],
-  ["ProPresenter freezes", "Do not force-quit during a live moment unless directed. Tell the director and technical lead immediately."]
+const recovery = [
+  ["Wrong slide", "Click the correct slide directly."],
+  ["Lyrics are behind", "Jump to the current lyric, then resume normal pacing."],
+  ["Speaker skips ahead", "Select what matches the live moment and ignore skipped slides."],
+  ["Output is black", "Keep the presentation ready and alert the director or technical lead."],
+  ["Video will not play", "Return to a safe slide or clear the screen. Do not repeatedly click the cue."],
+  ["ProPresenter freezes", "Tell the director immediately. Do not force-quit unless directed."]
 ];
 
 export default function ProPresenterPage(){return <div className="wrap section pp-page">
-  <div className="page-heading"><div><p className="eyebrow">ProPresenter 7</p><h1>Keep the congregation with the service.</h1><p className="lead">Run the already-configured presentation, follow the live moment, and recover without panic-clicking.</p></div><Link className="button primary" href="/propresenter/live">Enter Live Mode</Link></div>
+  <header className="pp-hero">
+    <div><p className="eyebrow">ProPresenter</p><h1>Follow the live moment.</h1><p className="lead">Run the prepared service, stay with the speaker or worship leader, and recover with one intentional action.</p></div>
+    <div className="pp-actions"><Link className="button primary" href="/propresenter/live">Live Service Mode</Link><a className="button secondary" href="#workflow">Service Workflow</a></div>
+  </header>
 
-  <section className="pp-quick"><div><p className="eyebrow">Before service</p><h2>Five checks</h2></div><ol><li>Open ProPresenter 7.</li><li>Open today’s approved presentation or playlist.</li><li>Confirm the output is active.</li><li>Confirm the stage or confidence display is correct.</li><li>Start the preservice loop and verify the switcher can see it.</li></ol></section>
+  <section className="pp-summary" aria-label="ProPresenter quick reference">
+    <article><span>Before service</span><strong>Open today’s presentation</strong><p>Confirm output, stage display, and the preservice loop.</p></article>
+    <article><span>During service</span><strong>Click once, then verify</strong><p>Use the exact slide needed instead of panic-clicking Next.</p></article>
+    <article><span>When unsure</span><strong>Clear to a safe screen</strong><p>Keep ProPresenter ready and tell the director what happened.</p></article>
+  </section>
 
-  <section className="subsection"><p className="eyebrow">Sunday workflow</p><h2>Follow the order, but respond to the room.</h2><div className="pp-timeline">{workflow.map(([name,body],i)=><details key={name} open={i===0}><summary><span>{i+1}</span><strong>{name}</strong></summary><p>{body}</p></details>)}</div></section>
+  <section className="subsection pp-workflow-section" id="workflow"><p className="eyebrow">Service workflow</p><h2>Choose the current phase.</h2><div className="pp-timeline">{workflow.map(([name,body],i)=><details key={name} open={i===0}><summary><span>{i+1}</span><strong>{name}</strong></summary><p>{body}</p></details>)}</div></section>
 
-  <section className="subsection"><p className="eyebrow">Common actions</p><h2>Use one intentional action at a time.</h2><div className="pp-card-grid">{actions.map(([title,body])=><article key={title}><h3>{title}</h3><p>{body}</p></article>)}</div></section>
+  <section className="subsection"><p className="eyebrow">Fast recovery</p><h2>Fix the moment without making it worse.</h2><div className="pp-issue-grid">{recovery.map(([title,body],i)=><article key={title}><span>{i<3?"Do now":"Escalate"}</span><h3>{title}</h3><p>{body}</p></article>)}</div></section>
 
-  <section className="subsection"><p className="eyebrow">Fast recovery</p><h2>When something goes wrong</h2><div className="pp-issue-grid">{issues.map(([title,body],i)=><article key={title}><span>{i<3?"Volunteer safe":"Escalate"}</span><h3>{title}</h3><p>{body}</p></article>)}</div></section>
-
-  <div className="danger"><strong>Do not change:</strong> screen configuration, output routing, audience/stage display setup, resolutions, themes, or system preferences during a service unless authorized.</div>
+  <section className="pp-boundary"><strong>Do not change during a service:</strong><span>output routing, screen configuration, audience or stage-display setup, resolutions, themes, or system preferences.</span></section>
 </div>}
