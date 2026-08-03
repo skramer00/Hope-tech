@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PublicNavigation from "@/components/PublicNavigation";
 import "./globals.css";
+import "./design-system.css";
 import "./support.css";
 
 export const metadata: Metadata = {
